@@ -4,7 +4,7 @@ SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
 WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-
+DATADIR=${DATADIR}
 #
 # This script does the following:
 #
@@ -24,10 +24,10 @@ fi
 
 # if the command passed is 'mysqld' via CMD, then begin processing. 
 if [ "$1" = 'mysqld' ]; then
-  # read DATADIR from the MySQL config
-  DATADIR="$("$@" --verbose --help 2>/dev/null | awk '$1 == "datadir" { print $2; exit }')"
- 
-  # only check if system tables not created from mysql_install_db and permissions 
+  # Set DATADIR...
+  sed -i -e "s/^datadir=.*$/datadir=${DATADIR}/" /etc/mysql/my.cnf
+
+  # only check if system tables not created from mysql_install_db and permissions
   # set with initial SQL script before proceding to build SQL script
   if [ ! -d "$DATADIR/mysql" ]; then
   # fail if user didn't supply a root password  

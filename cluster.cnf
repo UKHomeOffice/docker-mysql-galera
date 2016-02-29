@@ -1,6 +1,6 @@
 [mysqld]
 
-wsrep_provider=/usr/lib/libgalera_smm.so
+wsrep_provider=/usr/lib64/libgalera_smm.so
 wsrep_cluster_address=gcomm://
 binlog_format=ROW
 default_storage_engine=InnoDB

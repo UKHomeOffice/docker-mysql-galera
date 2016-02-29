@@ -8,15 +8,20 @@ ENV PERCONA_XTRADB_VERSION 5.6
 ENV MYSQL_VERSION 5.6
 ENV INSTALL_PACKAGE_VERSION 56
 ENV TERM linux
+ENV DATADIR /var/lib/mysql
 
 # the "/var/lib/mysql" stuff here is because the mysql-server
 # postinst doesn't have an explicit way to disable the 
 # mysql_install_db codepath besides having a database already
 # "configured" (ie, stuff in /var/lib/mysql/mysql)
-# also, we set debconf keys to make APT a little quieter
 RUN yum install -y http://www.percona.com/downloads/percona-release/redhat/0.1-3/percona-release-0.1-3.noarch.rpm \
-    && yum install -y Percona-Server-server-${INSTALL_PACKAGE_VERSION} \
-    && rm -rf /var/lib/mysql && mkdir -p /var/lib/mysql && chown -R mysql:mysql /var/lib/mysql
+    && yum install -y Percona-XtraDB-Cluster-${INSTALL_PACKAGE_VERSION} \
+    && yum install -y iproute \
+    && yum install -y socat \
+    && rm -rf ${DATADIR} \
+    && mkdir -p ${DATADIR} && chown -R mysql:mysql ${DATADIR} \
+    && mkdir -p /var/log/mysql && chown -R mysql:mysql /var/log/mysql \
+    && mkdir -p /var/run/mysqld && chown -R mysql:mysql /var/run/mysqld
 
 VOLUME /var/lib/mysql
 
