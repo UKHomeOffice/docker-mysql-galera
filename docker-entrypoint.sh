@@ -4,7 +4,7 @@ SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
 WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-DATADIR=${DATADIR}
+DATADIR=${DATADIR:-/var/lib/mysql}
 #
 # This script does the following:
 #
@@ -24,13 +24,11 @@ fi
 
 # if the command passed is 'mysqld' via CMD, then begin processing. 
 if [ "$1" = 'mysqld' ]; then
-  # Set DATADIR...
-  sed -i -e "s/^datadir=.*$/datadir=${DATADIR}/" /etc/mysql/my.cnf
-
   # only check if system tables not created from mysql_install_db and permissions
   # set with initial SQL script before proceding to build SQL script
   if [ ! -d "$DATADIR/mysql" ]; then
-  # fail if user didn't supply a root password  
+
+    # fail if user didn't supply a root password
     if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" ]; then
       echo >&2 'error: database is uninitialized and MYSQL_ROOT_PASSWORD not set'
       echo >&2 '  Did you forget to add -e MYSQL_ROOT_PASSWORD=... ?'
@@ -65,7 +63,7 @@ EOSQL
 
     # Add SST (Single State Transfer) user if Clustering is turned on
     if [ -n "$GALERA_CLUSTER" ]; then
-    # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
+      # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
       WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
       if [ -z "$WSREP_SST_PASSWORD" ]; then
         echo >&2 'error: Galera cluster is enabled and WSREP_SST_PASSWORD is not set'
@@ -108,6 +106,7 @@ if [ -n "$GALERA_CLUSTER" ]; then
   
   # if the string is not defined or it only is 'gcomm://', this means bootstrap
   if [ -z "$WSREP_CLUSTER_ADDRESS" -o "$WSREP_CLUSTER_ADDRESS" == "gcomm://" ]; then
+
     # if empty, set to 'gcomm://'
     # NOTE: this list does not imply membership. 
     # It only means "obtain SST and join from one of these..."
@@ -118,9 +117,10 @@ if [ -n "$GALERA_CLUSTER" ]; then
     # loop through number of nodes
     for NUM in `seq 1 $NUM_NODES`; do
       NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
-  
-      # if set
+      # if set, the server is loaded...
       if [ -n "${!NODE_SERVICE_HOST}" ]; then
+
+        echo "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
         if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
           # if not the first bootstrap node add comma
@@ -136,6 +136,8 @@ if [ -n "$GALERA_CLUSTER" ]; then
             WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
           fi
         fi
+      else
+        echo "${NODE_SERVICE_HOST}:NOT RUNNING YET"
       fi
     done
   fi
@@ -144,7 +146,13 @@ if [ -n "$GALERA_CLUSTER" ]; then
   # cluster address string (wsrep_cluster_address) in the cluster
   # configuration file, cluster.cnf
   if [ -n "$WSREP_CLUSTER_ADDRESS" -a "$WSREP_CLUSTER_ADDRESS" != "gcomm://" ]; then
-    sed -i -e "s|^wsrep_cluster_address=gcomm://|wsrep_cluster_address=${WSREP_CLUSTER_ADDRESS}|" /etc/mysql/conf.d/cluster.cnf
+    CURRENT_CLUSTER_LINE=$(grep "wsrep_cluster_address=gcomm://" /etc/mysql/conf.d/cluster.cnf | awk -F= '{ print $2 }')
+    if [[ "${CURRENT_CLUSTER_LINE}" != "${WSREP_CLUSTER_ADDRESS}" ]]; then
+      echo "Setting cluster address to ${WSREP_CLUSTER_ADDRESS}"
+      sed -i -e "s|^wsrep_cluster_address=gcomm://|wsrep_cluster_address=${WSREP_CLUSTER_ADDRESS}|" /etc/mysql/conf.d/cluster.cnf
+    else
+      echo "Cluster address already set to ${WSREP_CLUSTER_ADDRESS}, leaving as is."
+    fi
   fi
 fi
 
