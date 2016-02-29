@@ -1,9 +1,9 @@
 #!/bin/bash
 
 SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
-WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS}/wsrep_sst_password)}
-MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS}/mysql_password)}
-MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS}/mysql_root_password)}
+WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
+MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
+MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 
 #
 # This script does the following:
