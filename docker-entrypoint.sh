@@ -156,8 +156,14 @@ if [ -n "$GALERA_CLUSTER" ]; then
   fi
 fi
 
-# random server ID needed
-sed -i -e "s/^server\-id=.*$/server-id=${RANDOM}/" ${CONF_FILE}
+# random server ID needed (IF data not preserved)
+if [ -f "${DATADIR}/serverid" ]; then
+  SERVER_ID=$(cat "{${DATADIR}/serverid")
+else
+  SERVER_ID=${RANDOM}
+  echo ${SERVER_ID}>${DATADIR}/serverid
+fi
+sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
 
 # finally, start mysql 
 exec "$@"
