@@ -174,12 +174,12 @@ else
   echo ${SERVER_ID}>${DATADIR}/serverid
 fi
 
+sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
+
 echo "[client]
 user=root
-password=$(cat ${MYSQL_ROOT_PASSWORD})
+password=${MYSQL_ROOT_PASSWORD}
 ">~/.my.cnf
-
-sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
 
 # finally, start mysql 
 exec "$@"
