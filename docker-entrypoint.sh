@@ -168,7 +168,7 @@ fi
 
 # random server ID needed (IF data not preserved)
 if [ -f "${DATADIR}/serverid" ]; then
-  SERVER_ID=$(cat "{${DATADIR}/serverid")
+  SERVER_ID=$(cat "${DATADIR}/serverid")
 else
   SERVER_ID=${RANDOM}
   echo ${SERVER_ID}>${DATADIR}/serverid
