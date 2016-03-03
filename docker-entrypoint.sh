@@ -24,6 +24,9 @@ if [ "${1:0:1}" = '-' ]; then
   set -- mysqld "$@"
 fi
 
+chown -R mysql:mysql /var/log/mysql
+chown -R mysql:mysql ${DATADIR}
+
 # if the command passed is 'mysqld' via CMD, then begin processing. 
 if [ "$1" = 'mysqld' ]; then
   # only check if system tables not created from mysql_install_db and permissions
