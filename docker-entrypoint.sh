@@ -5,6 +5,8 @@ WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-passwor
 MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 DATADIR=${DATADIR:-/var/lib/mysql}
+
+set -e
 #
 # This script does the following:
 #
@@ -26,7 +28,10 @@ fi
 if [ "$1" = 'mysqld' ]; then
   # only check if system tables not created from mysql_install_db and permissions
   # set with initial SQL script before proceding to build SQL script
-  if [ ! -d "$DATADIR/mysql" ]; then
+  if [ -d "${DATADIR}/mysql" ]; then
+    echo "Data found, no mysql install required."
+  else
+    echo "New node, no data at:${DATADIR}/mysql"
 
     # fail if user didn't supply a root password
     if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" ]; then
@@ -45,6 +50,7 @@ if [ "$1" = 'mysqld' ]; then
     tempSqlFile='/tmp/mysql-first-time.sql'
     cat > "$tempSqlFile" <<-EOSQL
 DELETE FROM mysql.user ;
+COMMIT;
 CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;
 GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;
 EOSQL
@@ -96,7 +102,8 @@ if [ -n "$GALERA_CLUSTER" ]; then
   fi
 
   # user/password for SST user
-  sed -i -e "s|^wsrep_sst_auth=sstuser:changethis|wsrep_sst_auth=${WSREP_SST_USER}:${WSREP_SST_PASSWORD}|" ${CONF_D}/cluster.cnf
+  sed -i -e "s|^wsrep_sst_auth=sstuser:changethis|wsrep_sst_auth=${WSREP_SST_USER}:${WSREP_SST_PASSWORD}|" \
+    ${CONF_D}/cluster.cnf
 
   # set nodes own address
   WSREP_NODE_ADDRESS=`ip addr show | grep -E '^[ ]*inet' | grep -m1 global | awk '{ print $2 }' | sed -e 's/\/.*//'`
@@ -163,6 +170,12 @@ else
   SERVER_ID=${RANDOM}
   echo ${SERVER_ID}>${DATADIR}/serverid
 fi
+
+echo "[client]
+user=root
+password=$(cat ${ROOT_PASS_SECRET})
+">~/.my.cnf
+
 sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
 
 # finally, start mysql 
