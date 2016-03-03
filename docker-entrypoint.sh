@@ -176,7 +176,7 @@ fi
 
 echo "[client]
 user=root
-password=$(cat ${ROOT_PASS_SECRET})
+password=$(cat ${MYSQL_ROOT_PASSWORD})
 ">~/.my.cnf
 
 sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
