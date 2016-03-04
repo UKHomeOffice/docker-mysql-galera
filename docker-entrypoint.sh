@@ -133,8 +133,8 @@ if [ -n "$GALERA_CLUSTER" ]; then
     # loop through number of nodes
     for NUM in `seq 1 $NUM_NODES`; do
       NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
-      # if set, the server is loaded...
-      if [ -n "${!NODE_SERVICE_HOST}" ]; then
+      # if set, the server has been loaded...
+      if [ -n "${!NODE_SERVICE_HOST}" ] && echo '' | ncat ${!NODE_SERVICE_HOST} 4567 >/dev/null ; then
 
         echo "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
