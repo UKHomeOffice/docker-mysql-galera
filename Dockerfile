@@ -24,9 +24,6 @@ RUN yum install -y http://www.percona.com/downloads/percona-release/redhat/0.1-3
     && mkdir -p /var/log/mysql && chown -R mysql:mysql /var/log/mysql \
     && mkdir -p /var/run/mysqld && chown -R mysql:mysql /var/run/mysqld
 
-VOLUME /var/lib/mysql
-VOLUME /var/log/mysql
-
 COPY my.cnf /etc/my.cnf
 COPY cluster.cnf /etc/my.cnf.d/cluster.cnf
 

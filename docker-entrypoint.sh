@@ -24,6 +24,7 @@ if [ "${1:0:1}" = '-' ]; then
   set -- mysqld "$@"
 fi
 
+# Adds the correct permissions BEFORE detecting directories etc...
 chown -R mysql:mysql /var/log/mysql
 chown -R mysql:mysql ${DATADIR}
 
@@ -45,17 +46,17 @@ if [ "$1" = 'mysqld' ]; then
 
     # mysql_install_db installs system tables
     echo 'Running mysql_install_db ...'
-        mysql_install_db --datadir="$DATADIR"
-        echo 'Finished mysql_install_db'
-    
+    mysql_install_db --datadir="$DATADIR"
+    echo 'Finished mysql_install_db'
+
     # this script will be run once when MySQL first starts to set up
     # prior to creating system tables and will ensure proper user permissions 
     tempSqlFile='/tmp/mysql-first-time.sql'
     cat > "$tempSqlFile" <<-EOSQL
-DELETE FROM mysql.user ;
+DELETE FROM mysql.user;
+FLUSH PRIVILEGES;
 COMMIT;
-CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;
-GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;
+GRANT ALL ON *.* TO 'root'@'%' identified by '${MYSQL_ROOT_PASSWORD}' WITH GRANT OPTION ;
 EOSQL
     
     if [ "$MYSQL_DATABASE" ]; then
@@ -85,7 +86,12 @@ EOSQL
     fi
 
     echo 'FLUSH PRIVILEGES ;' >> "$tempSqlFile"
-    
+    echo 'COMMIT;' >> "$tempSqlFile"
+    # Without this being run on any slave, the users table has a permanent lock as is marked crashed.
+    # A crashed mysql.user table will prevent logins after a restart.
+    echo 'USE mysql;' >> "$tempSqlFile"
+    echo 'CHECK TABLE `user` FAST QUICK;' >> "$tempSqlFile"
+
     # Add the SQL file to mysqld's command line args
     set -- "$@" --init-file="$tempSqlFile"
   fi
@@ -180,6 +186,8 @@ echo "[client]
 user=root
 password=${MYSQL_ROOT_PASSWORD}
 ">~/.my.cnf
+
+chmod 0600 ~/.my.cnf
 
 # finally, start mysql 
 exec "$@"

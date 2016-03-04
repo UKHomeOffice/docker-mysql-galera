@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 set -e
-NODE_PRE=pcx-node
+NODE_PRE=pxc-node
+GALERA_TAG=${GALERA_TAG:-galera}
 
 function get_node_ip() {
   node=$1
@@ -34,8 +35,8 @@ function start_node() {
     ;;
   esac
 
-  docker stop ${node} || true
-  docker rm ${node} || true
+  docker stop ${node} 2>/dev/null|| true
+  docker rm ${node} 2>/dev/null|| true
 
   docker run -it \
     ${extra_opts} \
@@ -46,7 +47,9 @@ function start_node() {
     -e GALERA_CLUSTER=true \
     -v ${PWD}/docker-entrypoint.sh:/entrypoint.sh \
     -e WSREP_CLUSTER_ADDRESS=gcomm:// \
-    galera ${debug}
+    ${GALERA_TAG} ${debug}
 }
+
+docker build -t ${GALERA_TAG} .
 
 start_node $@
