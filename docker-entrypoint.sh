@@ -5,15 +5,118 @@ WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-passwor
 MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 DATADIR=${DATADIR:-/var/lib/mysql}
+DETECT_MASTER_IF_DOWN=${DETECT_MASTER_IF_DOWN:-true}
 
 set -e
 #
 # This script does the following:
 #
 # 1. Sets up database privileges by building an SQL script
-# 2. MySQL is initially started with this script a first time
+# 2. MySQL is initially started with a permissions script a first time
 # 3. Modify my.cnf and cluster.cnf to reflect available nodes to join
+# 4. Recovers from complete cluster shutdown by polling for latest seq number from peers
 #
+
+function log() {
+
+  local msg=${1}
+
+  echo "INIT:${1}"
+
+}
+
+function need_to_poll() {
+
+  # poll if:
+  # 1. No nodes running AND a service HAS been defined for another host
+
+  # Don't poll if:
+  # 1. ANY nodes running.
+  # 2. If this is the only node with a service.
+
+  if [ ${RUNNING_SERVICES} -gt 0 ]; then
+    log "Other nodes running..."
+    return 1 # Don't Poll
+  else
+    log "No nodes running..."
+    if [ ${DETECTED_SERVICES} -le 1  ]; then
+      if [ $(expr "$HOSTNAME" : "pxc-node${SERVICE_UP_ID}") -eq 0 ]; then
+        # The only service defined is for this host (which is NOT up)...
+        # No need to poll
+        log "Only one service defined and it is for this host - NO poll."
+        return 1
+      fi
+    fi
+    # POLL - other services defined but not running!
+    return 0
+  fi
+}
+
+function poll_for_master() {
+
+  if need_to_poll ; then
+    log "Existing cluster down, starting polling..."
+    /opt/recover_service/wait_for_master.rb ${1}
+    return $?
+  else
+    log "Peers detected or only master, NOT polling..."
+    return 0
+  fi
+}
+
+function detect_services_and_set_wsrep() {
+  DETECTED_SERVICES=0
+  RUNNING_SERVICES=0
+
+  # if empty, set to 'gcomm://'
+  # NOTE: this list does not imply membership.
+  # It only means "obtain SST and join from one of these..."
+  if [ -z "$WSREP_CLUSTER_ADDRESS" ]; then
+    WSREP_CLUSTER_ADDRESS="gcomm://"
+  fi
+
+  for NUM in `seq 1 ${NUM_NODES}`; do
+    NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
+    # if set, the server has been previously loaded...
+    if [ -n "${!NODE_SERVICE_HOST}" ]; then
+      DETECTED_SERVICES=$(( ${DETECTED_SERVICES} + 1 ))
+      if [ -z ${SERVICE_HOSTS} ]; then
+        SERVICE_HOSTS="${!NODE_SERVICE_HOST}"
+      else
+        SERVICE_HOSTS="${SERVICE_HOSTS},${!NODE_SERVICE_HOST}"
+      fi
+      SERVICE_UP_ID=${NUM}
+      if echo '' | ncat ${!NODE_SERVICE_HOST} 4567 &> /dev/null ; then
+        RUNNING_SERVICES=$(( ${RUNNING_SERVICES} + 1 ))
+        # Server has been started and is running
+        log "${NODE_SERVICE_HOST}:IN SERVICE"
+        # if not its own IP, then add it
+        if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
+          # if not the first bootstrap node add comma
+          if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
+          fi
+          # append
+          # if user specifies USE_IP, use that
+          if [ -n "${USE_IP}" ]; then
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}"${!NODE_SERVICE_HOST}
+          # otherwise use DNS
+          else
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
+          fi
+        fi
+      fi
+    fi
+  done
+
+  if [ "${DETECT_MASTER_IF_DOWN}" == "true" ]; then
+    poll_for_master "${SERVICE_HOSTS}"
+    if [ $? -eq 5 ]; then
+      # We should be master, no other nodes running
+      WSREP_CLUSTER_ADDRESS="gcomm://"
+    fi
+  fi
+}
 
 # if NUM_NODES not passed, default to 3
 if [ -z "$NUM_NODES" ]; then
@@ -33,21 +136,21 @@ if [ "$1" = 'mysqld' ]; then
   # only check if system tables not created from mysql_install_db and permissions
   # set with initial SQL script before proceding to build SQL script
   if [ -d "${DATADIR}/mysql" ]; then
-    echo "Data found, no mysql install required."
+    log "Data found, no mysql install required."
   else
-    echo "New node, no data at:${DATADIR}/mysql"
+    log "New node, no data at:${DATADIR}/mysql"
 
     # fail if user didn't supply a root password
     if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" ]; then
-      echo >&2 'error: database is uninitialized and MYSQL_ROOT_PASSWORD not set'
-      echo >&2 '  Did you forget to add -e MYSQL_ROOT_PASSWORD=... ?'
+      log 'error: database is uninitialized and MYSQL_ROOT_PASSWORD not set'
+      log '  Did you forget to add -e MYSQL_ROOT_PASSWORD=... ?'
       exit 1
     fi
 
     # mysql_install_db installs system tables
-    echo 'Running mysql_install_db ...'
+    log 'Running mysql_install_db ...'
     mysql_install_db --datadir="$DATADIR"
-    echo 'Finished mysql_install_db'
+    log 'Finished mysql_install_db'
 
     # this script will be run once when MySQL first starts to set up
     # prior to creating system tables and will ensure proper user permissions 
@@ -76,8 +179,8 @@ EOSQL
       # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
       WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
       if [ -z "$WSREP_SST_PASSWORD" ]; then
-        echo >&2 'error: Galera cluster is enabled and WSREP_SST_PASSWORD is not set'
-        echo >&2 '  Did you forget to add -e WSREP_SST__PASSWORD=... ?'
+        log 'error: Galera cluster is enabled and WSREP_SST_PASSWORD is not set'
+        log '  Did you forget to add -e WSREP_SST__PASSWORD=... ?'
         exit 1
       fi
       # add single state transfer (SST) user privileges
@@ -105,8 +208,8 @@ if [ -n "$GALERA_CLUSTER" ]; then
   # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
   WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
   if [ -z "$WSREP_SST_PASSWORD" ]; then
-    echo >&2 'error: database is uninitialized and WSREP_SST_PASSWORD not set'
-    echo >&2 '  Did you forget to add -e WSREP_SST_PASSWORD=xxx ?'
+    log 'error: database is uninitialized and WSREP_SST_PASSWORD not set'
+    log '  Did you forget to add -e WSREP_SST_PASSWORD=xxx ?'
     exit 1
   fi
 
@@ -120,54 +223,19 @@ if [ -n "$GALERA_CLUSTER" ]; then
     sed -i -e "s|^wsrep_node_address=.*$|wsrep_node_address=${WSREP_NODE_ADDRESS}|" ${CONF_D}/cluster.cnf
   fi
   
-  # if the string is not defined or it only is 'gcomm://', this means bootstrap
-  if [ -z "$WSREP_CLUSTER_ADDRESS" -o "$WSREP_CLUSTER_ADDRESS" == "gcomm://" ]; then
+  detect_services_and_set_wsrep
+  log "WSREP=${WSREP_CLUSTER_ADDRESS}"
 
-    # if empty, set to 'gcomm://'
-    # NOTE: this list does not imply membership. 
-    # It only means "obtain SST and join from one of these..."
-    if [ -z "$WSREP_CLUSTER_ADDRESS" ]; then
-      WSREP_CLUSTER_ADDRESS="gcomm://"
-    fi
-
-    # loop through number of nodes
-    for NUM in `seq 1 $NUM_NODES`; do
-      NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
-      # if set, the server has been loaded...
-      if [ -n "${!NODE_SERVICE_HOST}" ] && echo '' | ncat ${!NODE_SERVICE_HOST} 4567 >/dev/null ; then
-
-        echo "${NODE_SERVICE_HOST}:IN SERVICE"
-        # if not its own IP, then add it
-        if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
-          # if not the first bootstrap node add comma
-          if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
-          fi
-          # append
-          # if user specifies USE_IP, use that
-          if [ -n "${USE_IP}" ]; then
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}"${!NODE_SERVICE_HOST}
-          # otherwise use DNS
-          else
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
-          fi
-        fi
-      else
-        echo "${NODE_SERVICE_HOST}:NOT RUNNING YET"
-      fi
-    done
-  fi
-
-  # WSREP_CLUSTER_ADDRESS is now complete and will be interpolated into the 
+  # WSREP_CLUSTER_ADDRESS is now complete and will be interpolated into the
   # cluster address string (wsrep_cluster_address) in the cluster
   # configuration file, cluster.cnf
-  if [ -n "$WSREP_CLUSTER_ADDRESS" -a "$WSREP_CLUSTER_ADDRESS" != "gcomm://" ]; then
+  if [ -n "$WSREP_CLUSTER_ADDRESS" ]; then
     CURRENT_CLUSTER_LINE=$(grep "wsrep_cluster_address=gcomm://" ${CONF_D}/cluster.cnf | awk -F= '{ print $2 }')
     if [[ "${CURRENT_CLUSTER_LINE}" != "${WSREP_CLUSTER_ADDRESS}" ]]; then
-      echo "Setting cluster address to ${WSREP_CLUSTER_ADDRESS}"
+      log "Setting cluster address to ${WSREP_CLUSTER_ADDRESS}"
       sed -i -e "s|^wsrep_cluster_address=gcomm://.*$|wsrep_cluster_address=${WSREP_CLUSTER_ADDRESS}|" ${CONF_D}/cluster.cnf
     else
-      echo "Cluster address already set to ${WSREP_CLUSTER_ADDRESS}, leaving as is."
+      log "Cluster address already set to ${WSREP_CLUSTER_ADDRESS}, leaving as is."
     fi
   fi
 fi

@@ -41,11 +41,13 @@ function start_node() {
   docker run -it \
     ${extra_opts} \
     -d \
+    -e DETECT_MASTER_IF_DOWN="true" \
     -e WSREP_SST_PASSWORD="NDNBMTcwMjctR" \
     -e MYSQL_PASSWORD="1NzMtN0Mz" \
     -e MYSQL_ROOT_PASSWORD="fdsgfdh43827" \
     -e GALERA_CLUSTER=true \
     -v ${PWD}/docker-entrypoint.sh:/entrypoint.sh \
+    -v ${PWD}/recover_service:/opt/recover_service \
     -e WSREP_CLUSTER_ADDRESS=gcomm:// \
     ${GALERA_TAG} ${debug}
 }
