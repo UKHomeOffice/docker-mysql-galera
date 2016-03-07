@@ -28,6 +28,7 @@ COPY my.cnf /etc/my.cnf
 COPY cluster.cnf /etc/my.cnf.d/cluster.cnf
 
 COPY docker-entrypoint.sh /entrypoint.sh
+COPY backup.sh /backup.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 3306 4444 4567 4568
