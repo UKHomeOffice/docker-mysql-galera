@@ -5,15 +5,111 @@ WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-passwor
 MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 DATADIR=${DATADIR:-/var/lib/mysql}
+DETECT_MASTER_IF_DOWN=${DETECT_MASTER_IF_DOWN:-true}
 
 set -e
 #
 # This script does the following:
 #
 # 1. Sets up database privileges by building an SQL script
-# 2. MySQL is initially started with this script a first time
+# 2. MySQL is initially started with a permissions script a first time
 # 3. Modify my.cnf and cluster.cnf to reflect available nodes to join
+# 4. Recovers from complete cluster shutdown by polling for latest seq number from peers
 #
+
+function need_to_poll() {
+
+  # poll if:
+  # 1. No nodes running AND a service HAS been defined for another host
+
+  # Don't poll if:
+  # 1. ANY nodes running.
+  # 2. If this is the only node with a service.
+
+  if [ ${RUNNING_SERVICES} -gt 0 ]; then
+    echo "Other nodes running..."
+    return 1 # Don't Poll
+  else
+    echo "No nodes running..."
+    if [ ${DETECTED_SERVICES} -le 1  ]; then
+      if [ $(expr "$HOSTNAME" : "pxc-node${SERVICE_UP_ID}") -eq 0 ]; then
+        # The only service defined is for this host (which is NOT up)...
+        # No need to poll
+        echo "Only one service defined and it is for this host - NO poll."
+        return 1
+      fi
+    fi
+    # POLL - other services defined but not running!
+    return 0
+  fi
+}
+
+function poll_for_master() {
+
+  if need_to_poll ; then
+    echo "Existing cluster down, starting polling..."
+    /var/lib/wait_for_master.rb ${1}
+    return $?
+  else
+    echo "Peers detected or only master, NOT polling..."
+    return 0
+  fi
+}
+
+function detect_services_and_set_wsrep() {
+  DETECTED_SERVICES=0
+  RUNNING_SERVICES=0
+
+  # if empty, set to 'gcomm://'
+  # NOTE: this list does not imply membership.
+  # It only means "obtain SST and join from one of these..."
+  if [ -z "$WSREP_CLUSTER_ADDRESS" ]; then
+    WSREP_CLUSTER_ADDRESS="gcomm://"
+  fi
+
+  for NUM in `seq 1 ${NUM_NODES}`; do
+    NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
+    # if set, the server has been previously loaded...
+    if [ -n "${!NODE_SERVICE_HOST}" ]; then
+      DETECTED_SERVICES=$(( ${DETECTED_SERVICES} + 1 ))
+      if [ -z ${SERVICE_HOSTS} ]; then
+        SERVICE_HOSTS="${!NODE_SERVICE_HOST}"
+      else
+        SERVICE_HOSTS="${SERVICE_HOSTS},${!NODE_SERVICE_HOST}"
+      fi
+      SERVICE_UP_ID=${NUM}
+      if echo '' | ncat ${!NODE_SERVICE_HOST} 4567 >/dev/null ; then
+        RUNNING_SERVICES=$(( ${RUNNING_SERVICES} + 1 ))
+        # Server has been started and is running
+        echo "${NODE_SERVICE_HOST}:IN SERVICE"
+        # if not its own IP, then add it
+        if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
+          # if not the first bootstrap node add comma
+          if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
+          fi
+          # append
+          # if user specifies USE_IP, use that
+          if [ -n "${USE_IP}" ]; then
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}"${!NODE_SERVICE_HOST}
+          # otherwise use DNS
+          else
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
+          fi
+        fi
+      fi
+    fi
+  done
+
+  if [ "${DETECT_MASTER_IF_DOWN}" == "true" ]; then
+    poll_for_master "${SERVICE_HOSTS}"
+    if [ $? -eq 5 ]; then
+      # We should be master, no other nodes running
+      WSREP_CLUSTER_ADDRESS="gcomm://"
+    fi
+  fi
+  echo "In Funct worked out WSREP=${WSREP_CLUSTER_ADDRESS}"
+}
 
 # if NUM_NODES not passed, default to 3
 if [ -z "$NUM_NODES" ]; then
@@ -120,45 +216,10 @@ if [ -n "$GALERA_CLUSTER" ]; then
     sed -i -e "s|^wsrep_node_address=.*$|wsrep_node_address=${WSREP_NODE_ADDRESS}|" ${CONF_D}/cluster.cnf
   fi
   
-  # if the string is not defined or it only is 'gcomm://', this means bootstrap
-  if [ -z "$WSREP_CLUSTER_ADDRESS" -o "$WSREP_CLUSTER_ADDRESS" == "gcomm://" ]; then
+  detect_services_and_set_wsrep
+  echo "Worked out WSREP=${WSREP_CLUSTER_ADDRESS}"
 
-    # if empty, set to 'gcomm://'
-    # NOTE: this list does not imply membership. 
-    # It only means "obtain SST and join from one of these..."
-    if [ -z "$WSREP_CLUSTER_ADDRESS" ]; then
-      WSREP_CLUSTER_ADDRESS="gcomm://"
-    fi
-
-    # loop through number of nodes
-    for NUM in `seq 1 $NUM_NODES`; do
-      NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
-      # if set, the server has been loaded...
-      if [ -n "${!NODE_SERVICE_HOST}" ] && echo '' | ncat ${!NODE_SERVICE_HOST} 4567 >/dev/null ; then
-
-        echo "${NODE_SERVICE_HOST}:IN SERVICE"
-        # if not its own IP, then add it
-        if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
-          # if not the first bootstrap node add comma
-          if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
-          fi
-          # append
-          # if user specifies USE_IP, use that
-          if [ -n "${USE_IP}" ]; then
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}"${!NODE_SERVICE_HOST}
-          # otherwise use DNS
-          else
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
-          fi
-        fi
-      else
-        echo "${NODE_SERVICE_HOST}:NOT RUNNING YET"
-      fi
-    done
-  fi
-
-  # WSREP_CLUSTER_ADDRESS is now complete and will be interpolated into the 
+  # WSREP_CLUSTER_ADDRESS is now complete and will be interpolated into the
   # cluster address string (wsrep_cluster_address) in the cluster
   # configuration file, cluster.cnf
   if [ -n "$WSREP_CLUSTER_ADDRESS" -a "$WSREP_CLUSTER_ADDRESS" != "gcomm://" ]; then
