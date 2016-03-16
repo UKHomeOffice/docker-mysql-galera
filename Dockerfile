@@ -32,5 +32,5 @@ COPY /recover_service/* /opt/recover_service/
 COPY docker-entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 
-EXPOSE 3306 4444 4567 4568
+EXPOSE 3306 4444 4567 4568 8888
 CMD ["mysqld"]
