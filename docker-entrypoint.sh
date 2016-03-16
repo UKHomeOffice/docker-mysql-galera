@@ -100,7 +100,7 @@ function detect_services_and_set_wsrep() {
       SERVICE_HOSTS="${SERVICE_HOSTS},${NODE_ADDR}"
     fi
 
-    if is_service_for_another_node ${NODE_DNS} ; then
+    if is_service_for_another_node "${NODE_DNS}" ; then
       if [ -z ${RECOVERY_HOSTS} ]; then
         RECOVERY_HOSTS="${NODE_DNS}"
       else
@@ -117,7 +117,7 @@ function detect_services_and_set_wsrep() {
         # Server has been started and is running
         log "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
-        if [ is_service_for_another_node "${NODE_DNS}" ]; then
+        if is_service_for_another_node "${NODE_DNS}" ; then
           # if not the first bootstrap node add comma
           if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
             WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
