@@ -4,6 +4,8 @@ require_relative 'galera_sequence_client'
 
 PORT = 8888
 
+STDOUT.sync = true
+
 server = GaleraSequenceServer.new(PORT)
 server.start
 

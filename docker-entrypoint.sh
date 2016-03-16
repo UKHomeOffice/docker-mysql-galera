@@ -25,6 +25,15 @@ function log() {
 
 }
 
+function is_service_for_another_node() {
+  local service_name=${1}
+  if [ $(expr "$HOSTNAME" : "${service_name}") -eq 0 ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 function need_to_poll() {
 
   # poll if:
@@ -54,14 +63,11 @@ function need_to_poll() {
 
 function poll_for_master() {
 
-  if need_to_poll ; then
-    log "Existing cluster down, starting polling..."
-    /opt/recover_service/wait_for_master.rb ${1}
-    return $?
-  else
-    log "Peers detected or only master, NOT polling..."
-    return 0
-  fi
+  local service_hosts=${1}
+
+  log "Existing cluster down, starting polling to ${service_hosts}..."
+  /opt/recover_service/wait_for_master.rb ${service_hosts}
+  return $?
 }
 
 function detect_services_and_set_wsrep() {
@@ -76,44 +82,66 @@ function detect_services_and_set_wsrep() {
   fi
 
   for NUM in `seq 1 ${NUM_NODES}`; do
+    NODE_DNS="pxc-node${NUM}"
     NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
+
+    if [ -n "${USE_IP}" ]; then
+      # Get IP from kubernetes env var
+      NODE_ADDR=${!NODE_SERVICE_HOST}
+    else
+      # Use service DNS name...
+      NODE_ADDR=${NODE_DNS}
+    fi
+
+    # Ensure the reconciliation service uses ALL nodes...
+    if [ -z ${SERVICE_HOSTS} ]; then
+      SERVICE_HOSTS="${NODE_ADDR}"
+    else
+      SERVICE_HOSTS="${SERVICE_HOSTS},${NODE_ADDR}"
+    fi
+
+    if is_service_for_another_node ${NODE_DNS} ; then
+      if [ -z ${RECOVERY_HOSTS} ]; then
+        RECOVERY_HOSTS="${NODE_DNS}"
+      else
+        RECOVERY_HOSTS="${RECOVERY_HOSTS},${NODE_DNS}"
+      fi
+    fi
+
     # if set, the server has been previously loaded...
     if [ -n "${!NODE_SERVICE_HOST}" ]; then
       DETECTED_SERVICES=$(( ${DETECTED_SERVICES} + 1 ))
-      if [ -z ${SERVICE_HOSTS} ]; then
-        SERVICE_HOSTS="${!NODE_SERVICE_HOST}"
-      else
-        SERVICE_HOSTS="${SERVICE_HOSTS},${!NODE_SERVICE_HOST}"
-      fi
       SERVICE_UP_ID=${NUM}
-      if echo '' | ncat ${!NODE_SERVICE_HOST} 4567 &> /dev/null ; then
+      if echo '' | ncat ${NODE_ADDR} 4567 &> /dev/null ; then
         RUNNING_SERVICES=$(( ${RUNNING_SERVICES} + 1 ))
         # Server has been started and is running
         log "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
-        if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
+        if [ is_service_for_another_node "${NODE_DNS}" ]; then
           # if not the first bootstrap node add comma
           if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
             WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
           fi
           # append
-          # if user specifies USE_IP, use that
-          if [ -n "${USE_IP}" ]; then
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}"${!NODE_SERVICE_HOST}
-          # otherwise use DNS
-          else
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
-          fi
+          WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}${NODE_ADDR}"
         fi
       fi
     fi
   done
 
   if [ "${DETECT_MASTER_IF_DOWN}" == "true" ]; then
-    poll_for_master "${SERVICE_HOSTS}"
-    if [ $? -eq 5 ]; then
-      # We should be master, no other nodes running
-      WSREP_CLUSTER_ADDRESS="gcomm://"
+    if need_to_poll ; then
+      poll_for_master "${SERVICE_HOSTS}"
+      if [ $? -eq 5 ]; then
+        # We should be master, no other nodes running...
+        log "Bootstrapping recovery as MASTER..."
+        WSREP_CLUSTER_ADDRESS="gcomm://"
+      else
+        log "Bootstrapping recovery with peers..."
+        WSREP_CLUSTER_ADDRESS="gcomm://${RECOVERY_HOSTS}"
+      fi
+    else
+      log "Peers detected or only master, NOT polling..."
     fi
   fi
 }
