@@ -6,6 +6,8 @@ require_relative 'galera_sequence_client'
 # TODO: timeout?
 # TODO: monitor server whilst starting...
 
+STDOUT.sync = true
+
 SCRIPT_DIR = File.expand_path(File.dirname(__FILE__))
 
 pid = fork do

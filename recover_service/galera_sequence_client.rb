@@ -81,12 +81,13 @@ class GaleraSequenceClient
             log "Error getting sequence number from #{host}:#{response.body} - #{response.code}"
             sleep 5
         end
-      rescue Timeout::Error,
+      rescue EOFError,
           Errno::EINVAL,
           Errno::ECONNREFUSED,
           Errno::ECONNRESET,
-          Errno::ETIMEDOUT,
-          EOFError,
+          Errno::ETIMEDOUT
+        sleep 5
+      rescue Timeout::Error,
           Net::HTTPBadResponse,
           Net::HTTPHeaderSyntaxError,
           Net::ProtocolError => e

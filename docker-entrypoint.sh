@@ -66,8 +66,8 @@ function poll_for_master() {
   local service_hosts=${1}
 
   log "Existing cluster down, starting polling to ${service_hosts}..."
-  /opt/recover_service/wait_for_master.rb ${service_hosts}
-  return $?
+  /opt/recover_service/wait_for_master.rb ${service_hosts} || ret=$?
+  return ${ret}
 }
 
 function detect_services_and_set_wsrep() {
@@ -100,7 +100,7 @@ function detect_services_and_set_wsrep() {
       SERVICE_HOSTS="${SERVICE_HOSTS},${NODE_ADDR}"
     fi
 
-    if is_service_for_another_node ${NODE_DNS} ; then
+    if is_service_for_another_node "${NODE_DNS}" ; then
       if [ -z ${RECOVERY_HOSTS} ]; then
         RECOVERY_HOSTS="${NODE_DNS}"
       else
@@ -117,7 +117,7 @@ function detect_services_and_set_wsrep() {
         # Server has been started and is running
         log "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
-        if [ is_service_for_another_node "${NODE_DNS}" ]; then
+        if is_service_for_another_node "${NODE_DNS}" ; then
           # if not the first bootstrap node add comma
           if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
             WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
@@ -131,8 +131,7 @@ function detect_services_and_set_wsrep() {
 
   if [ "${DETECT_MASTER_IF_DOWN}" == "true" ]; then
     if need_to_poll ; then
-      poll_for_master "${SERVICE_HOSTS}"
-      local poll_exit_code=$?
+      poll_for_master "${SERVICE_HOSTS}" || poll_exit_code=$?
       case ${poll_exit_code} in
       5)
         # We should be master, no other nodes running...
