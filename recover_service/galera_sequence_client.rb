@@ -8,6 +8,7 @@ class GaleraSequenceClient
                 :server_port,
                 :servers
 
+  LOG_PREFIX = 'INIT, GaleraSequenceClient:'
   def initialize(servers, port)
 
     unless servers.class == Array
@@ -23,31 +24,31 @@ class GaleraSequenceClient
     @master
   end
 
+  def log(message)
+    puts "#{LOG_PREFIX}#{message}"
+  end
+
   def wait_for_master(local_server)
 
-    @servers.each do | server |
-      host, seq_no = get_sequence_no(server)
+    @servers.each do | service_name |
+      # Dirty hack around Kubernetes 1.1 service to this pod not working!
+      if local_server.host_name.include?(service_name)
+        service_name = 'localhost'
+      end
+      host, seq_no = get_sequence_no(service_name)
       @sequence_nos_by_host[host] = seq_no
     end
 
     latest_sequence_no = @sequence_nos_by_host.values.sort.last
-    puts "Latest UNIQUE sequence number detected:#{latest_sequence_no}"
-    if local_server.my_seq_no == latest_sequence_no
-      if @sequence_nos_by_host.values.select { | num | num == latest_sequence_no }.length > 1
-        puts 'More than one host with latest sequence number...'
-        # Decide if master based on sorted list of hosts
-        master_host = get_hosts_with_sequence_no(server.my_seq_no).sort.last
-        if master_host == local_server.host_key
-          # We should be master!!!
-          puts 'Deterministically electing as master...'
-          @master = true
-        else
-          puts 'Deterministically NOT electing as master...'
-        end
-      else
-        puts 'This host has latest sequence number...'
-        @master = true
-      end
+    # This will get the same host even when multiple hosts share the same sequence number
+    master_host = get_hosts_with_sequence_no(latest_sequence_no).sort.last
+
+    log "Latest UNIQUE sequence number detected:#{latest_sequence_no}, electing master:#{master_host}"
+    if local_server.my_seq_no == latest_sequence_no && master_host == local_server.host_name
+      log 'Master is me!'
+      @master = true
+    else
+      log "Remote host elected as recovery master:#{master_host}"
     end
   end
 
@@ -61,21 +62,34 @@ class GaleraSequenceClient
     hosts
   end
 
-  def get_sequence_no(server)
-    uri = URI.parse("http://#{server}:#{@server_port}#{GaleraSequenceServer::LASTEST_URI}")
+  def get_sequence_no(host)
+    url = "http://#{host}:#{@server_port}#{GaleraSequenceServer::LASTEST_URI}"
+    uri = URI.parse(url)
     http = Net::HTTP.new(uri.host, uri.port)
     request = Net::HTTP::Get.new(uri.request_uri)
-    response = http.request(request)
-
     hostname = nil
     sequence_no = nil
     until sequence_no do
-      case response.code.to_i
-        when 200
-          hostname, sequence_no = response.body.strip.split(':')
-        else
-          puts "Error getting sequence number from #{server}:#{response.body} - #{response.code}"
-          sleep 10
+      begin
+        log "Requesting #{url}..."
+        response = http.request(request)
+        case response.code.to_i
+          when 200
+            hostname, sequence_no = response.body.strip.split(':')
+          else
+            log "Error getting sequence number from #{host}:#{response.body} - #{response.code}"
+            sleep 10
+        end
+      rescue Timeout::Error,
+          Errno::EINVAL,
+          Errno::ECONNREFUSED,
+          Errno::ECONNRESET,
+          Errno::ETIMEDOUT,
+          EOFError,
+          Net::HTTPBadResponse,
+          Net::HTTPHeaderSyntaxError,
+          Net::ProtocolError => e
+        log "HTTP Error getting sequence number from #{host}:#{e.message}"
       end
     end
     [hostname, sequence_no]

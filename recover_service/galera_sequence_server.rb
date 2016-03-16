@@ -4,6 +4,8 @@ require 'socket'
 class GaleraSequenceServer
 
   # Server to read the state file or the output of wsrep-recover and respond with latest sequence number...
+  # See http://galeracluster.com/documentation-webpages/restartingcluster.html
+
   GRASTATE_FILE = '/var/lib/mysql/grastate.dat'
   REGEXP_SEQNO = '^seqno:\s+([-]\d+)$'
   REGEXP_AUDIT_SEQNO = 'Recovered position:\s+.*:(\d+)$'
@@ -38,13 +40,13 @@ class GaleraSequenceServer
 
     @my_seq_no = seq_no
     server.mount_proc LASTEST_URI do |req, res|
-      res.body = "#{host_key}:#{seq_no.to_s}"
+      res.body = "#{host_name}:#{seq_no.to_s}"
     end
 
     @server = server
   end
 
-  def host_key
+  def host_name
     Socket.gethostname
   end
 
