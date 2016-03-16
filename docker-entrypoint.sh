@@ -54,9 +54,10 @@ function need_to_poll() {
 
 function poll_for_master() {
 
+  local service_hosts=${1}
   if need_to_poll ; then
-    log "Existing cluster down, starting polling..."
-    /opt/recover_service/wait_for_master.rb ${1}
+    log "Existing cluster down, starting polling to ${service_hosts}..."
+    /opt/recover_service/wait_for_master.rb ${service_hosts}
     return $?
   else
     log "Peers detected or only master, NOT polling..."
@@ -76,22 +77,27 @@ function detect_services_and_set_wsrep() {
   fi
 
   for NUM in `seq 1 ${NUM_NODES}`; do
-    NODE_SERVICE_HOST="PXC_NODE${NUM}_SERVICE_HOST"
+    SERVICE_PREFIX="PXC_NODE${NUM}"
+    NODE_DNS=${SERVICE_PREFIX,,}
+    NODE_SERVICE_HOST="${SERVICE_PREFIX}_SERVICE_HOST"
+
+    # Ensure the reconciliation service uses ALL nodes...
+    if [ -z ${SERVICE_HOSTS} ]; then
+      SERVICE_HOSTS="${NODE_DNS}"
+    else
+      SERVICE_HOSTS="${SERVICE_HOSTS},${NODE_DNS}"
+    fi
+
     # if set, the server has been previously loaded...
     if [ -n "${!NODE_SERVICE_HOST}" ]; then
       DETECTED_SERVICES=$(( ${DETECTED_SERVICES} + 1 ))
-      if [ -z ${SERVICE_HOSTS} ]; then
-        SERVICE_HOSTS="${!NODE_SERVICE_HOST}"
-      else
-        SERVICE_HOSTS="${SERVICE_HOSTS},${!NODE_SERVICE_HOST}"
-      fi
       SERVICE_UP_ID=${NUM}
       if echo '' | ncat ${!NODE_SERVICE_HOST} 4567 &> /dev/null ; then
         RUNNING_SERVICES=$(( ${RUNNING_SERVICES} + 1 ))
         # Server has been started and is running
         log "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
-        if [ $(expr "$HOSTNAME" : "pxc-node${NUM}") -eq 0 ]; then
+        if [ $(expr "$HOSTNAME" : "${NODE_DNS}") -eq 0 ]; then
           # if not the first bootstrap node add comma
           if [ $WSREP_CLUSTER_ADDRESS != "gcomm://" ]; then
             WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS},"
@@ -102,7 +108,7 @@ function detect_services_and_set_wsrep() {
             WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}"${!NODE_SERVICE_HOST}
           # otherwise use DNS
           else
-            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}pxc-node${NUM}"
+            WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}${NODE_DNS}"
           fi
         fi
       fi

@@ -4,6 +4,8 @@ require 'socket'
 class GaleraSequenceServer
 
   # Server to read the state file or the output of wsrep-recover and respond with latest sequence number...
+  # See http://galeracluster.com/documentation-webpages/restartingcluster.html
+
   GRASTATE_FILE = '/var/lib/mysql/grastate.dat'
   REGEXP_SEQNO = '^seqno:\s+([-]\d+)$'
   REGEXP_AUDIT_SEQNO = 'Recovered position:\s+.*:(\d+)$'
