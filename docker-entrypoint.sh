@@ -132,14 +132,21 @@ function detect_services_and_set_wsrep() {
   if [ "${DETECT_MASTER_IF_DOWN}" == "true" ]; then
     if need_to_poll ; then
       poll_for_master "${SERVICE_HOSTS}"
-      if [ $? -eq 5 ]; then
+      local poll_exit_code=$?
+      case ${poll_exit_code} in
+      5)
         # We should be master, no other nodes running...
         log "Bootstrapping recovery as MASTER..."
         WSREP_CLUSTER_ADDRESS="gcomm://"
-      else
+        ;;
+      0)
         log "Bootstrapping recovery with peers..."
         WSREP_CLUSTER_ADDRESS="gcomm://${RECOVERY_HOSTS}"
-      fi
+        ;;
+      *)
+        log "Error running polling client:${poll_exit_code}"
+        ;;
+      esac
     else
       log "Peers detected or only master, NOT polling..."
     fi

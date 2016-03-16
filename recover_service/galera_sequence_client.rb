@@ -9,6 +9,7 @@ class GaleraSequenceClient
                 :servers
 
   LOG_PREFIX = 'INIT, GaleraSequenceClient:'
+
   def initialize(servers, port)
 
     unless servers.class == Array
@@ -28,11 +29,11 @@ class GaleraSequenceClient
     puts "#{LOG_PREFIX}#{message}"
   end
 
-  def wait_for_master(local_server)
+  def wait_for_master(host_name)
 
     @servers.each do | service_name |
       # Dirty hack around Kubernetes 1.1 service to this pod not working!
-      if local_server.host_name.include?(service_name)
+      if host_name.include?(service_name)
         service_name = 'localhost'
       end
       host, seq_no = get_sequence_no(service_name)
@@ -44,7 +45,7 @@ class GaleraSequenceClient
     master_host = get_hosts_with_sequence_no(latest_sequence_no).sort.last
 
     log "Latest UNIQUE sequence number detected:#{latest_sequence_no}, electing master:#{master_host}"
-    if master_host == local_server.host_name
+    if master_host == host_name
       log 'Master is me!'
       @master = true
     else
@@ -54,9 +55,9 @@ class GaleraSequenceClient
 
   def get_hosts_with_sequence_no(seq_no)
     hosts = []
-    @sequence_nos_by_host.each do | hostname, a_seq_no |
+    @sequence_nos_by_host.each do | a_host_name, a_seq_no |
       if seq_no == a_seq_no
-        hosts << hostname
+        hosts << a_host_name
       end
     end
     hosts
@@ -78,7 +79,7 @@ class GaleraSequenceClient
             hostname, sequence_no = response.body.strip.split(':')
           else
             log "Error getting sequence number from #{host}:#{response.body} - #{response.code}"
-            sleep 10
+            sleep 5
         end
       rescue Timeout::Error,
           Errno::EINVAL,
@@ -90,6 +91,7 @@ class GaleraSequenceClient
           Net::HTTPHeaderSyntaxError,
           Net::ProtocolError => e
         log "HTTP Error getting sequence number from #{host}:#{e.message}"
+        sleep 5
       end
     end
     [hostname, sequence_no]
