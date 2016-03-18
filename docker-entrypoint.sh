@@ -176,6 +176,9 @@ if [ "$1" = 'mysqld' ]; then
   else
     log "New node, no data at:${DATADIR}/mysql"
 
+    # New node, no recovery process required...
+    DETECT_MASTER_IF_DOWN=false
+
     # fail if user didn't supply a root password
     if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" ]; then
       log 'error: database is uninitialized and MYSQL_ROOT_PASSWORD not set'
