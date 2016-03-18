@@ -18,7 +18,7 @@ ENV CONF_D /etc/my.cnf.d
 # "configured" (ie, stuff in /var/lib/mysql/mysql)
 RUN yum install -y http://www.percona.com/downloads/percona-release/redhat/0.1-3/percona-release-0.1-3.noarch.rpm \
     && yum install -y Percona-XtraDB-Cluster-${INSTALL_PACKAGE_VERSION} \
-    && yum install -y iproute socat which nmap-ncat \
+    && yum install -y iproute socat which \
     && yum install -y ruby \
     && rm -rf ${DATADIR} \
     && mkdir -p ${DATADIR} && chown -R mysql:mysql ${DATADIR} \
