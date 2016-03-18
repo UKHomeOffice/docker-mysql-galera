@@ -5,7 +5,8 @@ WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-passwor
 MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 DATADIR=${DATADIR:-/var/lib/mysql}
-DETECT_MASTER_IF_DOWN=${DETECT_MASTER_IF_DOWN:-true}
+RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
+CONTACT_PEERS_FOR_WSREP=true
 
 set -e
 #
@@ -70,6 +71,23 @@ function poll_for_master() {
   return ${ret}
 }
 
+
+function add_to_wsrep() {
+  local peers_addr=${1}
+  if [ "${CONTACT_PEERS_FOR_WSREP}" == "true" ] ; then
+    if cat < /dev/null > /dev/tcp/${peers_addr}/4567 ; then
+      log "${NODE_SERVICE_HOST}:CONTACT MADE"
+      return 0
+    else
+      log "${NODE_SERVICE_HOST}:NO CONTACT"
+      return 1
+    fi
+  else
+    log "${NODE_SERVICE_HOST}:CONTACT NOT REQUIRED"
+    return 0
+  fi
+}
+
 function detect_services_and_set_wsrep() {
   DETECTED_SERVICES=0
   RUNNING_SERVICES=0
@@ -111,10 +129,10 @@ function detect_services_and_set_wsrep() {
     # if set, the server has been previously loaded...
     if [ -n "${!NODE_SERVICE_HOST}" ]; then
       DETECTED_SERVICES=$(( ${DETECTED_SERVICES} + 1 ))
+      log "${NODE_SERVICE_HOST}:SERVICE EXISTS"
       SERVICE_UP_ID=${NUM}
-      if echo '' | ncat ${NODE_ADDR} 4567 &> /dev/null ; then
+      if add_to_wsrep ${NODE_ADDR} ; then
         RUNNING_SERVICES=$(( ${RUNNING_SERVICES} + 1 ))
-        # Server has been started and is running
         log "${NODE_SERVICE_HOST}:IN SERVICE"
         # if not its own IP, then add it
         if is_service_for_another_node "${NODE_DNS}" ; then
@@ -126,10 +144,12 @@ function detect_services_and_set_wsrep() {
           WSREP_CLUSTER_ADDRESS="${WSREP_CLUSTER_ADDRESS}${NODE_ADDR}"
         fi
       fi
+    else
+      log "${NODE_SERVICE_HOST}:SERVICE NOT CREATED"
     fi
   done
 
-  if [ "${DETECT_MASTER_IF_DOWN}" == "true" ]; then
+  if [ "${RECONCILE_MASTER_IF_DOWN}" == "true" ]; then
     if need_to_poll ; then
       poll_exit_code=0
       poll_for_master "${SERVICE_HOSTS}" || poll_exit_code=$?
@@ -177,7 +197,9 @@ if [ "$1" = 'mysqld' ]; then
     log "New node, no data at:${DATADIR}/mysql"
 
     # New node, no recovery process required...
-    DETECT_MASTER_IF_DOWN=false
+    RECONCILE_MASTER_IF_DOWN=false
+    # New node, don't try and contact (other nodes could be down)...
+    CONTACT_PEERS_FOR_WSREP=false
 
     # fail if user didn't supply a root password
     if [ -z "$MYSQL_ROOT_PASSWORD" -a -z "$MYSQL_ALLOW_EMPTY_PASSWORD" ]; then
