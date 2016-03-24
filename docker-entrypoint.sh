@@ -1,12 +1,13 @@
 #!/bin/bash
 
 SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
-WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
-MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
-MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 DATADIR=${DATADIR:-/var/lib/mysql}
 RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
 CONTACT_PEERS_FOR_WSREP=true
+WAIT_FOR_SECRETS=true
+WAIT_FOR_ENV_SECRETS_FILES="${SECRETS_PATH}/wsrep-sst-password ${SECRETS_PATH}/mysql-root-password"
+
+#SECRETS_ENV_FILE - set to specify an environment file with secrets...
 
 set -e
 #
@@ -191,6 +192,21 @@ fi
 # Adds the correct permissions BEFORE detecting directories etc...
 chown -R mysql:mysql /var/log/mysql
 chown -R mysql:mysql ${DATADIR}
+
+if [ "${WAIT_FOR_SECRETS}" == "true" ]; then
+  for file in ${WAIT_FOR_ENV_SECRETS_FILES}; do
+    log "Waiting for secrets file ${file}"
+    while [ ! -f ${file} ]; do
+      sleep 5
+    done
+  done
+  log "Secrets present, continuing..."
+fi
+
+# Set the defaults from files...
+WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
+MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
+MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 
 # if the command passed is 'mysqld' via CMD, then begin processing. 
 if [ "$1" = 'mysqld' ]; then
