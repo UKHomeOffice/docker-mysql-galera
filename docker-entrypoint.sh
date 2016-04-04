@@ -206,8 +206,9 @@ fi
 # Set the defaults from files...
 WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
-
+if [ -n "$MYSQL_USER" ]; then
+  MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
+fi
 # if the command passed is 'mysqld' via CMD, then begin processing. 
 if [ "$1" = 'mysqld' ]; then
   # only check if system tables not created from mysql_install_db and permissions
