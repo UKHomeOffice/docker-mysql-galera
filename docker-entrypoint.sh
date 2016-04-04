@@ -5,7 +5,7 @@ DATADIR=${DATADIR:-/var/lib/mysql}
 RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
 CONTACT_PEERS_FOR_WSREP=true
 WAIT_FOR_SECRETS=true
-WAIT_FOR_ENV_SECRETS_FILES="${SECRETS_PATH}/wsrep-sst-password ${SECRETS_PATH}/mysql-root-password"
+WAIT_FOR_SECRETS_FILES="wsrep-sst-password mysql-root-password"
 
 #SECRETS_ENV_FILE - set to specify an environment file with secrets...
 
@@ -194,9 +194,10 @@ chown -R mysql:mysql /var/log/mysql
 chown -R mysql:mysql ${DATADIR}
 
 if [ "${WAIT_FOR_SECRETS}" == "true" ]; then
-  for file in ${WAIT_FOR_ENV_SECRETS_FILES}; do
-    log "Waiting for secrets file ${file}"
-    while [ ! -f ${file} ]; do
+  for file in ${WAIT_FOR_SECRETS_FILES}; do
+    file_path=${SECRETS_PATH}/${file}
+    log "Waiting for secrets file ${file_path}"
+    while [ ! -f ${file_path} ]; do
       sleep 5
     done
   done
@@ -206,8 +207,9 @@ fi
 # Set the defaults from files...
 WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
-
+if [ -n ${MYSQL_USER} ]; then
+  MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
+fi
 # if the command passed is 'mysqld' via CMD, then begin processing. 
 if [ "$1" = 'mysqld' ]; then
   # only check if system tables not created from mysql_install_db and permissions
