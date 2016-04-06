@@ -207,7 +207,7 @@ fi
 # Set the defaults from files...
 WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-if [ -n ${MYSQL_USER} ]; then
+if [ ${MYSQL_USER} ]; then
   MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 fi
 # if the command passed is 'mysqld' via CMD, then begin processing. 
