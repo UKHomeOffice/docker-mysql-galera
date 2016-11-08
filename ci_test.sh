@@ -18,12 +18,14 @@ function start_node() {
   1)
     node=${NODE_PRE}1
     extra_opts=" --name ${node} "
+    export GALERA_CLUSTER=false
     ;;
   2)
     node=${NODE_PRE}2
     extra_opts=" --name ${node} -e USE_IP=true "
     ip1=$(get_node_ip ${NODE_PRE}1)
     extra_opts="${extra_opts} -e PXC_NODE1_SERVICE_HOST=${ip1} --link ${NODE_PRE}1:${NODE_PRE}1"
+    export GALERA_CLUSTER=true
     ;;
   3)
     node=${NODE_PRE}3
@@ -32,6 +34,7 @@ function start_node() {
     ip2=$(get_node_ip ${NODE_PRE}2)
     extra_opts="${extra_opts} -e PXC_NODE1_SERVICE_HOST=${ip1} --link ${NODE_PRE}1:${NODE_PRE}1"
     extra_opts="${extra_opts} -e PXC_NODE2_SERVICE_HOST=${ip2} --link ${NODE_PRE}2:${NODE_PRE}2"
+    export GALERA_CLUSTER=true
     ;;
   esac
 
@@ -42,10 +45,11 @@ function start_node() {
     ${extra_opts} \
     -d \
     -e DETECT_MASTER_IF_DOWN="true" \
+    -e WAIT_FOR_SECRETS="false" \
     -e WSREP_SST_PASSWORD="NDNBMTcwMjctR" \
     -e MYSQL_PASSWORD="1NzMtN0Mz" \
     -e MYSQL_ROOT_PASSWORD="fdsgfdh43827" \
-    -e GALERA_CLUSTER=true \
+    -e GALERA_CLUSTER \
     -v ${PWD}/docker-entrypoint.sh:/entrypoint.sh \
     -v ${PWD}/recover_service:/opt/recover_service \
     -e WSREP_CLUSTER_ADDRESS=gcomm:// \

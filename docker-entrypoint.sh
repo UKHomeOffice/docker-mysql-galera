@@ -4,7 +4,7 @@ SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
 DATADIR=${DATADIR:-/var/lib/mysql}
 RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
 CONTACT_PEERS_FOR_WSREP=true
-WAIT_FOR_SECRETS=true
+WAIT_FOR_SECRETS=${WAIT_FOR_SECRETS:-true}
 WAIT_FOR_SECRETS_FILES="wsrep-sst-password mysql-root-password"
 
 #SECRETS_ENV_FILE - set to specify an environment file with secrets...
