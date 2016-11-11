@@ -205,9 +205,11 @@ if [ "${WAIT_FOR_SECRETS}" == "true" ]; then
 fi
 
 # Set the defaults from files...
-WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-if [ ${MYSQL_USER} ]; then
+if [ ! -z "$GALERA_CLUSTER" ]; then
+  WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
+fi
+if [ ! -z ${MYSQL_USER} ]; then
   MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 fi
 # if the command passed is 'mysqld' via CMD, then begin processing. 
@@ -259,7 +261,7 @@ EOSQL
     fi
 
     # Add SST (Single State Transfer) user if Clustering is turned on
-    if [ -n "$GALERA_CLUSTER" ]; then
+    if [ ! -z "$GALERA_CLUSTER" ]; then
       # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
       WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
       if [ -z "$WSREP_SST_PASSWORD" ]; then
@@ -288,7 +290,7 @@ fi
 
 # if cluster is turned on, then procede to build cluster setting strings
 # that will be interpolated into the config files
-if [ -n "$GALERA_CLUSTER" ]; then
+if [ ! -z "$GALERA_CLUSTER" ]; then
   # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
   WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
   if [ -z "$WSREP_SST_PASSWORD" ]; then
