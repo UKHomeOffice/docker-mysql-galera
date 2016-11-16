@@ -2,8 +2,6 @@
 
 SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
 DATADIR=${DATADIR:-/var/lib/mysql}
-RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
-CONTACT_PEERS_FOR_WSREP=true
 WAIT_FOR_SECRETS=${WAIT_FOR_SECRETS:-true}
 WAIT_FOR_SECRETS_FILES="wsrep-sst-password mysql-root-password"
 
@@ -208,6 +206,11 @@ fi
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
 if [ ! -z "$GALERA_CLUSTER" ]; then
   WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
+  RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
+  CONTACT_PEERS_FOR_WSREP=true
+else
+  RECONCILE_MASTER_IF_DOWN=false
+  CONTACT_PEERS_FOR_WSREP=false
 fi
 if [ ! -z ${MYSQL_USER} ]; then
   MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
