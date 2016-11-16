@@ -1,0 +1,46 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: pxc-node{{.NODEID}}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        node: pxc-node{{.NODEID}}
+        unit: pxc-cluster
+    spec:
+      containers:
+      - resources:
+          limits:
+            memory: 2096Mi
+          requests:
+            memory: 400Mi
+        image: quay.io/ukhomeofficedigital/mysql-galera:v0.3.0
+        name: pxc-node1
+        ports:
+        - containerPort: 3306
+        - containerPort: 4444
+        - containerPort: 4567
+        - containerPort: 4568
+        env:
+        - name: SECRETS_PATH
+          value: /etc/secrets
+        - name: NUM_NODES
+          value: "1"
+        - name: MYSQL_DATABASE
+          value: test
+        - name: MYSQL_USER
+          value: user
+        volumeMounts:
+        - mountPath: /etc/secrets
+          name: mysql-secrets
+        - mountPath: /var/lib/mysql
+          name: mysql-data
+      volumes:
+      - name: mysql-secrets
+        secret:
+          secretName: mysql
+      - name: mysql-data
+        hostPath:
+          path: /data/artifactory/mysql-data
