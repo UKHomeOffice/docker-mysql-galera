@@ -2,9 +2,7 @@
 
 SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
 DATADIR=${DATADIR:-/var/lib/mysql}
-RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
-CONTACT_PEERS_FOR_WSREP=true
-WAIT_FOR_SECRETS=true
+WAIT_FOR_SECRETS=${WAIT_FOR_SECRETS:-false}
 WAIT_FOR_SECRETS_FILES="wsrep-sst-password mysql-root-password"
 
 #SECRETS_ENV_FILE - set to specify an environment file with secrets...
@@ -185,6 +183,10 @@ if [ -z "$NUM_NODES" ]; then
   NUM_NODES=3
 fi
 
+if [ ${NUM_NODES} -eq 1 ]; then
+  unset GALERA_CLUSTER
+fi
+
 if [ "${1:0:1}" = '-' ]; then
   set -- mysqld "$@"
 fi
@@ -205,9 +207,16 @@ if [ "${WAIT_FOR_SECRETS}" == "true" ]; then
 fi
 
 # Set the defaults from files...
-WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
 MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-root-password)}
-if [ ${MYSQL_USER} ]; then
+if [ ! -z "$GALERA_CLUSTER" ]; then
+  WSREP_SST_PASSWORD=${WSREP_SST_PASSWORD:-$(cat ${SECRETS_PATH}/wsrep-sst-password)}
+  RECONCILE_MASTER_IF_DOWN=${RECONCILE_MASTER_IF_DOWN:-true}
+  CONTACT_PEERS_FOR_WSREP=true
+else
+  RECONCILE_MASTER_IF_DOWN=false
+  CONTACT_PEERS_FOR_WSREP=false
+fi
+if [ ! -z ${MYSQL_USER} ]; then
   MYSQL_PASSWORD=${MYSQL_PASSWORD:-$(cat ${SECRETS_PATH}/mysql-password)}
 fi
 # if the command passed is 'mysqld' via CMD, then begin processing. 
@@ -259,7 +268,7 @@ EOSQL
     fi
 
     # Add SST (Single State Transfer) user if Clustering is turned on
-    if [ -n "$GALERA_CLUSTER" ]; then
+    if [ ! -z "$GALERA_CLUSTER" ]; then
       # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
       WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
       if [ -z "$WSREP_SST_PASSWORD" ]; then
@@ -288,7 +297,7 @@ fi
 
 # if cluster is turned on, then procede to build cluster setting strings
 # that will be interpolated into the config files
-if [ -n "$GALERA_CLUSTER" ]; then
+if [ ! -z "$GALERA_CLUSTER" ]; then
   # this is the Single State Transfer user (SST, initial dump or xtrabackup user)
   WSREP_SST_USER=${WSREP_SST_USER:-"sst"}
   if [ -z "$WSREP_SST_PASSWORD" ]; then
@@ -334,10 +343,11 @@ fi
 
 sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
 
-echo "[client]
+cat << MYCNF_EOF >> ~/.my.cnf
+[client]
 user=root
-password=${MYSQL_ROOT_PASSWORD}
-">~/.my.cnf
+password="${MYSQL_ROOT_PASSWORD}"
+MYCNF_EOF
 
 chmod 0600 ~/.my.cnf
 
