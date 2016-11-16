@@ -2,7 +2,7 @@
 
 SECRETS_PATH=${SECRETS_PATH:-/etc/galera-secrets}
 DATADIR=${DATADIR:-/var/lib/mysql}
-WAIT_FOR_SECRETS=${WAIT_FOR_SECRETS:-true}
+WAIT_FOR_SECRETS=${WAIT_FOR_SECRETS:-false}
 WAIT_FOR_SECRETS_FILES="wsrep-sst-password mysql-root-password"
 
 #SECRETS_ENV_FILE - set to specify an environment file with secrets...
@@ -183,6 +183,10 @@ if [ -z "$NUM_NODES" ]; then
   NUM_NODES=3
 fi
 
+if [ ${NUM_NODES} -eq 1 ]; then
+  unset GALERA_CLUSTER
+fi
+
 if [ "${1:0:1}" = '-' ]; then
   set -- mysqld "$@"
 fi
@@ -339,10 +343,11 @@ fi
 
 sed -i -e "s/^server\-id=.*$/server-id=${SERVER_ID}/" ${CONF_FILE}
 
-echo "[client]
+cat << MYCNF_EOF >> ~/.my.cnf
+[client]
 user=root
-password=${MYSQL_ROOT_PASSWORD}
-">~/.my.cnf
+password="${MYSQL_ROOT_PASSWORD}"
+MYCNF_EOF
 
 chmod 0600 ~/.my.cnf
 
